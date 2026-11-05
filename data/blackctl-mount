@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+DEVICE_ID=${1:-}
+
+case "$DEVICE_ID" in
+    0003:1532:0A55.*|0003:1532:057[679A].*) ;;
+    *) exit 0 ;;
+esac
+
+modprobe blackctl
+
+for generic_driver in razer hid-generic; do
+    if [ -d "/sys/bus/hid/drivers/$generic_driver/$DEVICE_ID" ]; then
+        printf '%s' "$DEVICE_ID" > "/sys/bus/hid/drivers/$generic_driver/unbind"
+        printf '%s' "$DEVICE_ID" > /sys/bus/hid/drivers/blackctl/bind
+        sleep 0.1
+    fi
+done
+
+device_dir="/sys/bus/hid/drivers/blackctl/$DEVICE_ID"
+if [ -d "$device_dir" ]; then
+    # The driver entry is a symlink into /sys/devices. The trailing slash is
+    # required so recursive chgrp/chmod traverse it instead of touching only
+    # the symlink itself.
+    chgrp -R plugdev "$device_dir/"
+    chmod -R g+rw "$device_dir/"
+fi

@@ -1,0 +1,7 @@
+# Bind the BlackShark V3 family's control interface to the blackctl driver:
+# Xbox dongle 0A55, V3 Pro 0577/0576, V3 057A/0579.
+ACTION=="add", SUBSYSTEM=="hid", KERNEL=="0003:1532:0A55.*|0003:1532:057[679A].*", MODE:="0660", RUN+="/usr/lib/udev/blackctl-mount $kernel"
+
+# The driver creates its writable attributes during probe, after the bind event
+# begins. Delay the permission pass so every attribute is included.
+ACTION=="bind", SUBSYSTEM=="hid", DRIVER=="blackctl", RUN+="/bin/sh -c '(sleep 0.5; /usr/lib/udev/blackctl-mount $kernel) &'"

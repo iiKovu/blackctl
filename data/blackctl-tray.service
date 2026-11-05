@@ -1,0 +1,11 @@
+[Unit]
+Description=blackctl tray icon (headset battery)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/blackctl tray
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target

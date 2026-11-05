@@ -1,0 +1,13 @@
+[Unit]
+Description=blackctl headset audio effects (PipeWire filter-chain)
+After=pipewire.service wireplumber.service
+BindsTo=pipewire.service
+ConditionPathExists=%S/blackctl/fx.conf
+
+[Service]
+ExecStart=/usr/bin/pipewire -c %S/blackctl/fx.conf
+Restart=on-failure
+Slice=session.slice
+
+[Install]
+WantedBy=pipewire.service
