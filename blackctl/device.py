@@ -11,6 +11,7 @@ CONFIG_FILE = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expandus
 # USB product id -> (name, family). Only the Xbox dongle is tested on hardware.
 MODELS = {
     '0A55': ('BlackShark V3 Pro for Xbox', 'xbox'),
+    '0A4E': ('BlackShark V3 Pro for Xbox (USB-C)', 'xbox'),
     '0577': ('BlackShark V3 Pro', 'v3pro'),
     '0576': ('BlackShark V3 Pro (USB-C)', 'v3pro'),
     '057A': ('BlackShark V3', 'v3'),
@@ -84,15 +85,3 @@ def battery():
         return None
     return dev.name, level, dev.read_int('charging') == 1
 
-
-def battery_text(as_json=False):
-    """Status-bar line: plain text (polybar and others) or waybar JSON. Empty when off."""
-    state = battery()
-    if not as_json:
-        return '' if state is None else f'{state[1]}%' + (' +' if state[2] else '')
-    if state is None:
-        return json.dumps({'text': '', 'tooltip': 'Headset not connected', 'class': 'disconnected'})
-    name, level, charging = state
-    cls = 'charging' if charging else ('low' if level <= 15 else 'normal')
-    tooltip = f'{name}: {level}%' + (' (charging)' if charging else '')
-    return json.dumps({'text': f'{level}%', 'tooltip': tooltip, 'class': cls, 'percentage': level})

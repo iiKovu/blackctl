@@ -299,10 +299,6 @@ def _systemctl(*args):
     return subprocess.run(['systemctl', '--user', *args], capture_output=True).returncode == 0
 
 
-def available():
-    return os.path.exists(PLUGIN) and os.path.exists(HRIR)
-
-
 def _push_live(side, values):
     """Change control values on a running chain without restarting it."""
     names = GAME_NODES if side == 'audio' else MIC_NODES
@@ -325,7 +321,7 @@ def apply(state, side=None):
     live when its chain is already running. Anything else rewrites the config and restarts.
     Returns an error string, or None.
     """
-    if not available():
+    if not (os.path.exists(PLUGIN) and os.path.exists(HRIR)):
         return 'effects are not installed (run install.sh again)'
     if not (state['surround'] or state['audio'].get('mode') or state['mic'].get('mode')):
         _systemctl('disable', '--now', SERVICE)

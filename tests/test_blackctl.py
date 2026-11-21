@@ -1,10 +1,37 @@
-import json
+from pathlib import Path
+import subprocess
 import unittest
-from unittest import mock
 
 from blackctl import device, fx
 
+ROOT = Path(__file__).resolve().parents[1]
 TARGETS = ("alsa_output.headset", "alsa_input.headset")
+
+
+class StackTests(unittest.TestCase):
+    def test_driver_and_app_agree_on_the_models(self):
+        driver = (ROOT / "kernel/blackctl.c").read_text()
+        self.assertEqual(len(device.MODELS), driver.count("HID_USB_DEVICE("))
+        for pid in device.MODELS:
+            self.assertIn(f"HID_USB_DEVICE(USB_VENDOR_ID_RAZER, 0x{pid.lower()})", driver)
+            self.assertIn(f"{{ 0x{pid.lower()},", driver)
+
+    def test_model_comes_from_the_usb_id(self):
+        dev = device.Device("/sys/bus/hid/drivers/blackctl/0003:1532:057A.0004")
+        self.assertEqual(("057A", "v3"), (dev.pid, dev.family))
+
+    def test_udev_rule_and_installer_are_valid(self):
+        for cmd in (["udevadm", "verify", str(ROOT / "data/99-blackctl.rules")],
+                    ["bash", "-n", str(ROOT / "install.sh")]):
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_installer_ships_every_data_file(self):
+        script = (ROOT / "install.sh").read_text()
+        for path in ("dsp/razer_dyn.c", "dsp/kemar.wav", "data/blackctl-fx.service",
+                     "data/blackctl-tray.service", "data/99-blackctl.rules"):
+            self.assertTrue((ROOT / path).is_file(), path)
+            self.assertIn(path.split("/")[-1], script)
 
 
 class EffectsTests(unittest.TestCase):
@@ -55,26 +82,6 @@ class EffectsTests(unittest.TestCase):
         after = fx.config(state, TARGETS)
         self.assertNotEqual(before, after)
         self.assertEqual(fx._structure(before), fx._structure(after))
-
-
-class BatteryTests(unittest.TestCase):
-    def test_waybar_output(self):
-        with mock.patch.object(device, "battery", return_value=("Headset", 12, False)):
-            out = json.loads(device.battery_text(as_json=True))
-        self.assertEqual("12%", out["text"])
-        self.assertEqual("low", out["class"])
-        with mock.patch.object(device, "battery", return_value=None):
-            self.assertEqual("", json.loads(device.battery_text(as_json=True))["text"])
-
-    def test_plain_output_for_other_bars(self):
-        with mock.patch.object(device, "battery", return_value=("Headset", 80, True)):
-            self.assertEqual("80% +", device.battery_text())
-        with mock.patch.object(device, "battery", return_value=None):
-            self.assertEqual("", device.battery_text())
-
-    def test_model_comes_from_the_usb_id(self):
-        dev = device.Device("/sys/bus/hid/drivers/blackctl/0003:1532:057A.0004")
-        self.assertEqual(("057A", "v3"), (dev.pid, dev.family))
 
 
 if __name__ == "__main__":

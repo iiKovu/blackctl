@@ -12,7 +12,7 @@ import sys
 import gi
 from gi.repository import Gio, GLib
 
-from .device import Device
+from .device import battery
 
 POLL_SECONDS = 10
 WATCHER = 'org.kde.StatusNotifierWatcher'
@@ -40,17 +40,14 @@ ITEM_XML = """
 
 
 def headset_state():
-    """(icon name, tooltip) for the connected headset, or None when there is none."""
-    dev = Device.detect()
-    if not dev:
+    """(icon name, tooltip) for the headset, or None while it is off or unplugged."""
+    state = battery()
+    if state is None:
         return None
-    level = dev.read_int('battery')
-    if level is None:
-        return 'audio-headphones-symbolic', f'{dev.name}: battery not reported yet'
-    charging = dev.read_int('charging') == 1
+    name, level, charging = state
     step = min(100, round(level / 10) * 10)
     icon = f'battery-level-{step}-charging-symbolic' if charging else f'battery-level-{step}-symbolic'
-    return icon, f'{dev.name}: {level}%' + (' (charging)' if charging else '')
+    return icon, f'{name}: {level}%' + (' (charging)' if charging else '')
 
 
 def open_app():

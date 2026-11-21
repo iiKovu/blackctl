@@ -110,13 +110,15 @@ remove_dkms_packages "$DKMS_VERSION"
 dkms install -m "$DKMS_NAME" -v "$DKMS_VERSION"
 
 install -m 0644 "$ROOT/data/99-blackctl.rules" /etc/udev/rules.d/99-blackctl.rules
-install -m 0755 "$ROOT/data/blackctl-mount" /usr/lib/udev/blackctl-mount
-printf '%s\n' razer_cfg255 blackctl > /etc/modules-load.d/blackctl.conf
+rm -f /usr/lib/udev/blackctl-mount  # no longer used
+# cfg255 must be loaded before the dongle enumerates; blackctl loads on its own.
+echo razer_cfg255 > /etc/modules-load.d/blackctl.conf
 
 # Audio effects: dynamics plugin, HRIR for virtual surround, and the user service.
 install -d /usr/lib/blackctl /usr/share/blackctl
 gcc -O2 -shared -fPIC -o /usr/lib/blackctl/razer_dyn.so "$ROOT/dsp/razer_dyn.c" -lm
 install -m 0644 "$ROOT/dsp/kemar.wav" /usr/share/blackctl/kemar.wav
+[[ -e /usr/lib/systemd/user/blackctl-tray.service ]] && FIRST_INSTALL=0 || FIRST_INSTALL=1
 install -m 0644 "$ROOT/data/blackctl-fx.service" "$ROOT/data/blackctl-tray.service" /usr/lib/systemd/user/
 
 # GUI runs straight from this source tree.
@@ -129,14 +131,16 @@ install -o "$TARGET_USER" -g "$TARGET_GROUP" -m 0644 "$ROOT/data/blackctl.deskto
 install -o "$TARGET_USER" -g "$TARGET_GROUP" -m 0644 "$ROOT/data/blackctl.svg" "$USER_LOCAL/share/icons/hicolor/scalable/apps/blackctl.svg"
 install -o "$TARGET_USER" -g "$TARGET_GROUP" -m 0644 "$ROOT/data/70-blackctl-blackshark-game-chat.conf" "$WIREPLUMBER_RULE"
 as_user systemctl --user daemon-reload 2>/dev/null || true
-# Tray icon with the battery, started with the graphical session.
-as_user systemctl --user enable --now blackctl-tray.service 2>/dev/null || true
+# Tray icon with the battery, started with the graphical session. Enabled on the
+# first install only, so turning it off sticks across reinstalls.
+if [[ "$FIRST_INSTALL" == 1 ]]; then
+    as_user systemctl --user enable --now blackctl-tray.service 2>/dev/null || true
+fi
 
 udevadm control --reload-rules
 modprobe -r blackctl 2>/dev/null || true
 modprobe razer_cfg255
 modprobe blackctl
-udevadm trigger --action=add --subsystem-match=hid
 
 echo "Installed blackctl from $ROOT"
 echo "Unplug the dongle for a few seconds and plug it back in, then launch: blackctl"

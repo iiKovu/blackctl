@@ -31,12 +31,14 @@ V3_PRESETS = [
     [6, 3, 4, 3, 0, 0, 0, 1, 3, 4],
     [1, 1, -1, 0, 2, 0, 4, 4, 4, -3],
 ]
-XBOX_CUSTOM_SLOT = 5
+CUSTOM_SLOT = 5  # the slot the sliders edit on the models with stored presets
 FN_MODES = [(0, 'Game/Chat'), (1, 'Mic Sidetone'), (2, 'Footsteps'), (3, 'Bluetooth Volume')]
 SLEEP_TIMES = [(0, 'Never'), (15, '15 min'), (30, '30 min'), (45, '45 min'), (60, '60 min')]
+CALL_MIX = [(0, 'Mix in'), (1, 'Lower game'), (2, 'Mute game')]
+LED_MODES = [(0, 'Connection'), (1, 'Battery'), (2, 'Low battery only')]
 # Settings pushed back to the headset by Resync, in the driver's attribute names.
 SETTINGS = ('eq', 'thx', 'anc', 'sidetone', 'fn_button', 'audio_prompts', 'power_save',
-            'ull', 'game_chat')
+            'ull', 'game_chat', 'call_mix', 'led')
 
 CSS = b"""
 notebook > header > tabs > tab { padding: 8px 18px; }
@@ -146,7 +148,7 @@ class Window(Gtk.ApplicationWindow):
         cfg = read_config()
         self.pid = cfg.get('last_device', '0A55')
         self.family = MODELS[self.pid][1]
-        self.saved = self._load_saved(cfg)
+        self.saved = cfg.get('state', {}).get(self.pid, {})
         self.eq_custom = cfg.get('eq_custom', {})
         self.fx_state = fx.default_state() | cfg.get('fx', {})
         self.device = None
@@ -161,6 +163,12 @@ class Window(Gtk.ApplicationWindow):
         notebook.append_page(self._mic_tab(), Gtk.Label(label='MIC'))
         notebook.append_page(self._power_tab(), Gtk.Label(label='POWER'))
         self.device_pages = [notebook.get_nth_page(i) for i in (0, 2, 3)]
+        # Single-value settings and the widget that shows each one.
+        self.widgets = {'thx': self.thx_choice, 'fn_button': self.fn_choice,
+                        'audio_prompts': self.prompts_choice, 'power_save': self.sleep_choice,
+                        'sidetone': self.sidetone, 'ull': self.ull_choice,
+                        'game_chat': self.game_chat, 'call_mix': self.call_mix_choice,
+                        'led': self.led_choice}
 
         about = Gtk.Button(label='About', margin_start=8)
         about.add_css_class('flat')
@@ -189,12 +197,6 @@ class Window(Gtk.ApplicationWindow):
         GLib.timeout_add(1000, self._poll)
 
     # ── settings and background writes ─────────────────────────────────────
-
-    def _load_saved(self, cfg):
-        saved = cfg.get('state', {}).get(self.pid, {})
-        if 'audio_fn_button' in saved:  # name used before 0.2
-            saved.setdefault('fn_button', saved.pop('audio_fn_button'))
-        return saved
 
     def _save(self):
         cfg = read_config()
@@ -242,7 +244,7 @@ class Window(Gtk.ApplicationWindow):
     def _sound_tab(self):
         self.eq_card = card('EQUALIZER')
         self.eq_choice = Choice([(i, n) for i, n in enumerate(EQ_NAMES)]
-                                + [(XBOX_CUSTOM_SLOT, 'Custom')], self._pick_preset)
+                                + [(CUSTOM_SLOT, 'Custom')], self._pick_preset)
         self.eq_card.append(self.eq_choice.box)
         bands = Gtk.Box(spacing=4, homogeneous=True)
         self.eq_sliders = []
@@ -290,7 +292,7 @@ class Window(Gtk.ApplicationWindow):
         return V3_PRESETS if self.family == 'v3' else PRO_PRESETS
 
     def _bands_for(self, slot):
-        if self.family == 'v3' or slot == XBOX_CUSTOM_SLOT:
+        if self.family == 'v3' or slot == CUSTOM_SLOT:
             default = self._presets()[slot] if slot < 5 else [0] * 10
             return self.eq_custom.get(str(slot), default)
         return self._presets()[slot]
@@ -302,17 +304,17 @@ class Window(Gtk.ApplicationWindow):
         self._eq_quiet = False
 
     def _pick_preset(self, slot):
-        if self.family == 'v3' or slot == XBOX_CUSTOM_SLOT:
+        if self.family == 'v3' or slot == CUSTOM_SLOT:
             self._write_bands(self._bands_for(slot), slot)
         else:
             self._show_bands(self._presets()[slot])
             self._set('eq', slot)
 
     def _editable_slot(self):
-        """Slot the sliders write to: the selected one on the V3, Custom on the Xbox."""
+        """Slot the sliders write to: the selected one on the V3, Custom on the others."""
         if self.family == 'v3':
             return next((s for s, b in self.eq_choice.buttons.items() if b.get_active()), 1)
-        return XBOX_CUSTOM_SLOT
+        return CUSTOM_SLOT
 
     def _band_moved(self, _scale):
         if self._eq_quiet:
@@ -345,7 +347,6 @@ class Window(Gtk.ApplicationWindow):
     # ── Effects ────────────────────────────────────────────────────────────
 
     def _effects_tab(self):
-        hint = None if fx.available() else 'Effects are not installed: run install.sh again.'
         surround = card('VIRTUAL SURROUND',
                         'Places stereo sound around you, like speakers in a room. '
                         'Done in software, separate from THX.')
@@ -366,7 +367,7 @@ class Window(Gtk.ApplicationWindow):
         mic.append(self.mic_mode.box)
         mic.append(self.mic_level.scale)
 
-        self.fx_status = Gtk.Label(label=hint or '', xalign=0, wrap=True)
+        self.fx_status = Gtk.Label(xalign=0, wrap=True)
         self.fx_status.add_css_class('error')
         return page(surround, audio, mic, self.fx_status)
 
@@ -422,13 +423,21 @@ class Window(Gtk.ApplicationWindow):
         prompts = card('AUDIO PROMPTS', 'Voice prompts for mic mute and other events.')
         self.prompts_choice = Choice([(0, 'Off'), (1, 'On')], lambda v: self._set('audio_prompts', v))
         prompts.append(self.prompts_choice.box)
-        return page(sidetone, fn, prompts)
+
+        self.call_mix_card = card('BLUETOOTH CALLS', 'What happens to game audio during a phone call.')
+        self.call_mix_choice = Choice(CALL_MIX, lambda v: self._set('call_mix', v))
+        self.call_mix_card.append(self.call_mix_choice.box)
+        return page(sidetone, fn, prompts, self.call_mix_card)
 
     def _power_tab(self):
         self.sleep_card = card('SLEEP TIMER', 'Turn the headset off after this long without audio.')
         self.sleep_choice = Choice(SLEEP_TIMES, lambda v: self._set('power_save', v))
         self.sleep_card.append(self.sleep_choice.box)
-        return page(self.sleep_card)
+
+        self.led_card = card('DONGLE LIGHT', 'What the light on the wireless dongle shows.')
+        self.led_choice = Choice(LED_MODES, lambda v: self._set('led', v))
+        self.led_card.append(self.led_choice.box)
+        return page(self.sleep_card, self.led_card)
 
     # ── state ──────────────────────────────────────────────────────────────
 
@@ -436,21 +445,15 @@ class Window(Gtk.ApplicationWindow):
         """Show the controls the connected model has, and load its saved settings."""
         if device and device.pid != self.pid:
             self.pid, self.family = device.pid, device.family
-            self.saved = self._load_saved(read_config())
+            self.saved = read_config().get('state', {}).get(self.pid, {})
             self._save()
         has = (lambda attr: device.has(attr)) if device else (lambda attr: attr in self.saved)
-        xbox, v3 = self.family == 'xbox', self.family == 'v3'
+        v3 = self.family == 'v3'
 
-        self.eq_choice.buttons[XBOX_CUSTOM_SLOT].set_visible(xbox)
-        for s in self.eq_sliders:
-            s.set_sensitive(self.family != 'v3pro')
-        self.eq_reset.set_visible(self.family != 'v3pro')
-        self.eq_card.hint.set_text({
-            'xbox': 'Presets are stored on the headset. Moving a slider edits Custom; '
-                    'the factory presets stay as they are.',
-            'v3pro': 'Presets are stored on the headset; their bands cannot be edited from Linux yet.',
-            'v3': 'Pick a preset and move the sliders to change it.',
-        }[self.family])
+        self.eq_choice.buttons[CUSTOM_SLOT].set_visible(not v3)
+        self.eq_card.hint.set_text('Pick a preset and move the sliders to change it.' if v3 else
+                                   'Presets are stored on the headset. Moving a slider edits Custom; '
+                                   'the factory presets stay as they are.')
         self.eq_card.hint.set_visible(True)
         self.anc_card.set_visible(has('anc'))
         self.anc_choice.buttons[2].set_visible(self.family == 'v3pro')
@@ -460,6 +463,8 @@ class Window(Gtk.ApplicationWindow):
         self.sleep_choice.box.set_visible(has('power_save'))
         self.sleep_card.hint.set_text('Turn the headset off after this long without audio.'
                                       if has('power_save') else 'Only available on the wireless dongle.')
+        self.call_mix_card.set_visible(has('call_mix'))
+        self.led_card.set_visible(has('led'))
 
         self.seen = {}
         for attr in SETTINGS:
@@ -484,9 +489,7 @@ class Window(Gtk.ApplicationWindow):
             if len(parts) > 1:
                 self.anc_level.set(int(parts[1]))
         else:
-            {'thx': self.thx_choice, 'fn_button': self.fn_choice, 'audio_prompts': self.prompts_choice,
-             'power_save': self.sleep_choice, 'sidetone': self.sidetone, 'ull': self.ull_choice,
-             'game_chat': self.game_chat}[attr].set(first)
+            self.widgets[attr].set(first)
 
     def _poll(self):
         """Every second: follow hot-plug, on-board button changes and battery (all cache reads)."""
@@ -510,8 +513,8 @@ class Window(Gtk.ApplicationWindow):
             if value is None or value == self.seen.get(attr):
                 continue
             self.seen[attr] = value
-            # Keep saved band strings for slots whose bands we write (Xbox Custom, V3).
-            if attr != 'eq' or self.family == 'v3pro' or (self.family == 'xbox' and int(value) < 5):
+            # Keep saved band strings for slots whose bands we write (Custom, every V3 slot).
+            if attr != 'eq' or (self.family != 'v3' and int(value) < 5):
                 self.saved[attr] = value
             self._show(attr, value)
         level = device.read_int('battery')

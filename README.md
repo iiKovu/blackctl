@@ -8,8 +8,10 @@ no noise cancelling settings, no battery. So I wrote this.
 What you get:
 
 - EQ presets and a custom EQ
-- THX, noise cancelling, sidetone, the function button, voice prompts, sleep timer
-- Battery level in your system tray
+- THX, noise cancelling, sidetone, the function button, voice prompts, sleep timer,
+  Bluetooth call mixing and the dongle light
+- Battery level in your system tray, and in anything that reads UPower (KDE, GNOME, Quickshell,
+  waybar's upower module)
 - Optional software effects: virtual surround, bass boost, voice clarity, loudness
   normalization, and mic noise cancellation / voice gate
 - The headset is set back to full hardware volume every time it reconnects
@@ -19,6 +21,7 @@ What you get:
 | Headset | USB ID | Status |
 | --- | --- | --- |
 | BlackShark V3 Pro for Xbox (dongle) | 1532:0a55 | Works, it's what I use |
+| BlackShark V3 Pro for Xbox (USB-C) | 1532:0a4e | Experimental |
 | BlackShark V3 Pro (dongle / USB-C) | 1532:0577 / 0576 | Experimental |
 | BlackShark V3 (dongle / USB-C) | 1532:057a / 0579 | Experimental |
 
@@ -47,7 +50,8 @@ app when you click it. It shows up in any tray, Wayland or X11 (waybar, Quickshe
 and only while the headset is connected. Turn it off with
 `systemctl --user disable --now blackctl-tray`.
 
-For a status bar module instead, `blackctl battery` prints the level (`--json` for waybar).
+The driver also registers the headset as a battery while it's on, so bars and desktops that use
+UPower show it on their own.
 
 ## How it works
 
