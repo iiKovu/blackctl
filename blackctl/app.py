@@ -269,7 +269,7 @@ class Window(Gtk.ApplicationWindow):
         self._eq_quiet = False
         self._eq_timer = None
 
-        self.thx_card = card('THX SPATIAL AUDIO', "The headset's own THX mode.")
+        self.thx_card = card('THX SPATIAL AUDIO', "The headset's own THX mode. The EQ only applies in Stereo.")
         self.thx_choice = Choice([(0, 'Stereo'), (1, 'THX')], lambda v: self._set('thx', v))
         self.thx_card.append(self.thx_choice.box)
 
@@ -308,7 +308,7 @@ class Window(Gtk.ApplicationWindow):
             self._write_bands(self._bands_for(slot), slot)
         else:
             self._show_bands(self._presets()[slot])
-            self._set('eq', slot)
+            self._set_eq(slot)
 
     def _editable_slot(self):
         """Slot the sliders write to: the selected one on the V3, Custom on the others."""
@@ -329,12 +329,19 @@ class Window(Gtk.ApplicationWindow):
         self._write_bands([int(round(s.get_value())) for s in self.eq_sliders])
         return False
 
+    def _set_eq(self, value):
+        """Send an EQ change, switching THX off first: the headset ignores the EQ in THX."""
+        if self.saved.get('thx') == '1':
+            self.thx_choice.set(0)
+            self._set('thx', 0)
+        self._set('eq', value)
+
     def _write_bands(self, values, slot=None):
         slot = self._editable_slot() if slot is None else slot
         self.eq_custom[str(slot)] = list(values)
         self._show_bands(values)
         self.eq_choice.set(slot)
-        self._set('eq', f'{slot} ' + ' '.join(map(str, values)))
+        self._set_eq(f'{slot} ' + ' '.join(map(str, values)))
 
     def _pick_anc(self, mode):
         level = int((self.saved.get('anc') or '0 4').split()[-1])

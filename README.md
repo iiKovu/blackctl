@@ -7,7 +7,7 @@ no noise cancelling settings, no battery. So I wrote this.
 
 What you get:
 
-- EQ presets and a custom EQ
+- EQ presets and a custom EQ (they only apply in Stereo, so picking one turns THX off)
 - THX, noise cancelling, sidetone, the function button, voice prompts, sleep timer,
   Bluetooth call mixing and the dongle light
 - Battery level in your system tray, and in anything that reads UPower (KDE, GNOME, Quickshell,
